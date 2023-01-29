@@ -1,0 +1,70 @@
+ACS Design Document:
+1. How many threads are you going to use? Specify the task that you intend each thread to perform.
+	-i intend on using 5 Clerk threads and N Customer threads (dependant on number of customers in input file)
+	-clerk threads will handle customers and customer threads will perform their own 'service' when a clerk is ready to do so
+
+2. Do the threads work independently? Or, is there an overall “controller” thread?
+	-threads do not work totally independantly but I will not be using an overseeing controller thread
+	-clerks and customers wil work together by signalling one another when they are ready to serve/finished being served etc
+3. How many mutexes are you going to use? Specify the operation that each mutex will guard.
+	-one per queue and one for waking clerks so 3 locks total
+	-queue locks will guard values in the critical section such as winnerselected, queuelength etc 
+	-waking clerk lock doesn't serve much purpose other than allowing clerks to wait
+4. Will the main thread be idle? If not, what will it be doing?
+	-main thread will be idle and let the clerk/customer threads do their work until they finish 
+		-then the main thread will join the customer threads and compute/print out the neccessary statistics
+5. How are you going to represent customers? what type of data structure will you use?
+	-customers will be represented by a customized struct data structure that will hold all of their information 
+6. How are you going to ensure that data structures in your program will not be modified concurrently?
+	-using mutex locks and condvars and the code is written in a way preventing customer values from being changed by threads
+7. How many convars are you going to use? For each convar:
+	-I opted to use 8 convars
+
+1. QueueConds[2]
+	(a) Describe the condition that the convar will represent.
+	-will represent a customer waiting in the queue
+	-when the convar is signalled, the customer will attempt to leave the queue 
+	(b) Which mutex is associated with the convar? Why?
+	-the 'queueLocks' locking the different queues
+	-ensures that the correct customer is removed from the queue
+	(c) What operation should be performed once pthread cond wait() has been unblocked and re-acquired the
+	mutex?
+	-the program checks if the customer is the 'correct' one to be removed from the queue
+		-and if it is then it proceeds to dequeue and be serviced
+	-if not go back to waiting
+
+2. clerkConds[5]
+	(a) Describe the condition that the convar will represent.
+	-represent the finishing of a customers service -> customer signals convar of the respective clerk that signalled them
+	(b) Which mutex is associated with the convar? Why?
+	-the 'queueLocks' locking the different queues
+	-ensures that the correct customer from the correct queue is signalling
+	(c) What operation should be performed once pthread cond wait() has been unblocked and re-acquired the
+	mutex?
+	-the clerk can begin serving another customer if there are any waiting
+
+3. clerkWaitingCond
+	(a) Describe the condition that the convar will represent.
+	-represents a clerk in an idle state when there are no customers currently in the queues
+	(b) Which mutex is associated with the convar? Why?
+	-the 'queueLocks' that the clerk thread last used
+	-some will wait on queue1 and others will wait on queue0
+	(c) What operation should be performed once pthread cond wait() has been unblocked and re-acquired the
+	mutex?
+	-one of the waiting clerks will begin serving again and choose the highest priority customer 
+
+8. Briefly sketch the overall algorithm you will use.
+-threads will be created for each clerk (5) and each customer (n)
+-customers will enter either queue0 (economy) or queue1(business) depending on class type
+-customers will attempt to signal any sleeping clerks before joining the queue and waiting for service
+	-if a clerk wakes up here, it will check which queue has customers and prioritize business class before serving
+-once customer is about to be served it adds its wait time to the overall wait time
+-when serving, clerk will lock respective queue mutex so that it can communicate which clerk has done the serving 
+	-clerk will then release that mutex before waiting on a completion signal from the customer thread
+-the customers will lock their respective mutex's so they can modify queue operations and queue length, winnerselected variables etc
+	-customers will release mutex once complete
+-the customer will complete it's service before signalling the clerk that it's finished, allowing the clerk to proceed to the next customer
+	-each clerk will have its own condvar for this signalling purpose
+-once all customers have been served and overall-wait-time has been finalized the customer threads will join, output will be displayed and program will terminate
+
+
